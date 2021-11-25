@@ -26,9 +26,10 @@ def optimizer_step(g, H, lambda_=0, mute=False, mask=None, eps=1e-6):
 
     H_, g_ = H.cpu(), g.cpu()
     try:
-        U = torch.cholesky(H_, upper=True)
+        # U = torch.cholesky(H_, upper=True)
+        U = torch.linalg.cholesky(H_).transpose(-2, -1).conj()
     except RuntimeError as e:
-        if 'singular U' in str(e):
+        if 'singular U' in str(e) or 'is not positive-definite' in str(e):
             if not mute:
                 logger.debug(
                     'Cholesky decomposition failed, fallback to LU.')

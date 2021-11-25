@@ -42,6 +42,7 @@ def parse_image_lists(paths: Path, **kwargs) -> List:
     images = []
     files = list(Path(paths.parent).glob(paths.name))
     assert len(files) > 0, paths
+    logger.info(f'Trying {paths}, {files}')
     for lfile in files:
         images += parse_image_list(lfile, **kwargs)
     return images

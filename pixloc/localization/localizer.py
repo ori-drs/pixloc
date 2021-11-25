@@ -142,6 +142,7 @@ class PoseLocalizer(Localizer):
             self.conf.refinement)
 
         logger.info('Reading hloc logs...')
+        print(paths)
         with open(paths.log_path, 'rb') as f:
             self.logs = pickle.load(f)['loc']
 

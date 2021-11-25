@@ -35,7 +35,7 @@ default_confs = {
             'do_pose_approximation': False,
         },
     },
-    'from_pose': {
+    'from_poses': {
         'experiment': experiment,
         'features': {},
         'optimizer': {
@@ -118,6 +118,8 @@ def main():
             generate_query_list(paths_slice, slice_)
 
         if args.from_poses:
+            print(paths_slice)
+            paths_slice.log_path = paths_slice.dumps / ("slice" + str(slice_) + "/CMU_hloc_superpoint+superglue_netvlad10.txt_logs.pkl")
             localizer = PoseLocalizer(paths_slice, conf)
         else:
             localizer = RetrievalLocalizer(paths_slice, conf)

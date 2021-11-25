@@ -22,8 +22,7 @@ Datasets, models, and training runs are parametrized by [omegaconf](https://gith
 
 The following command starts a new training run:
 ```bash
-python3 -m pixloc.pixlib.train experiment_name \
-		--conf pixloc/pixlib/configs/config_name.yaml
+python3 -m pixloc.pixlib.train experiment_name --conf pixloc/pixlib/configs/config_name.yaml
 ```
 
 It creates a new directory `experiment_name/` in `TRAINING_PATH` and dumps the configuration, model checkpoints, logs of stdout, and [Tensorboard](https://pytorch.org/docs/stable/tensorboard.html) summaries.
