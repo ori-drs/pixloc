@@ -12,6 +12,9 @@ from ..geometry import Camera, Pose
 from ...settings import DATA_PATH
 from pixloc.utils.quaternions import qvec2rotmat
 from pixloc.pixlib.utils.experiments import load_experiment
+from pixloc.visualization.viz_2d import (
+    plot_images, plot_keypoints, plot_matches, cm_RdGn,
+    features_to_RGB, add_text)
 
 logger = logging.getLogger(__name__)
 
@@ -50,7 +53,7 @@ class LiveTwoViewRefiner(object):
     self.calib1 = Camera(torch.tensor(calib1, dtype=torch.float32))
     self.calib0 = Camera(torch.tensor(calib0, dtype=torch.float32))
 
-  def process_inputs(self, image_0, image_1, lidar_points_in_lidar_frame, camera_0, camera_1):
+  def process_inputs(self, image_0, image_1, lidar_points_in_lidar_frame, camera_0, camera_1, logger=None):
     data = dict()
     data['ref'] = dict()
     data['query'] = dict()
@@ -70,5 +73,50 @@ class LiveTwoViewRefiner(object):
     data['query']['camera'] = camera_1
     data['query']['T_w2cam'] = Pose.from_4x4mat(torch.eye(4,4,dtype=torch.float32))
     data['T_r2q_init'] = Pose.from_4x4mat(torch.eye(4,4,dtype=torch.float32))
+    data['T_r2q_gt'] = Pose.from_4x4mat(torch.eye(4,4,dtype=torch.float32))
+    data['scene'] = torch.tensor([0])
     pred = self.refiner(data)
+    self.log_refinement(data, pred, self.refiner, logger)
     return pred
+
+  def log_refinement(self, data, pred, refiner, logger):
+    if logger is None:
+      return
+    cam_q = data['query']['camera']
+    p3D_r = data['ref']['points3D']
+
+    p2D_r, valid_r = data['ref']['camera'].world2image(p3D_r)
+    p2D_q_gt, valid_q = cam_q.world2image(data['T_r2q_gt'] * p3D_r)
+    p2D_q_init, _ = cam_q.world2image(data['T_r2q_init'] * p3D_r)
+    p2D_q_opt, _ = cam_q.world2image(pred['T_r2q_opt'][-1] * p3D_r)
+    valid = valid_q & valid_r
+
+    # losses = refiner.loss(pred_, data_)
+    # mets = refiner.metrics(pred_, data_)
+    # errP = f"ΔP {losses['reprojection_error/init'].item():.2f} -> {losses['reprojection_error'].item():.3f} px; "
+    # errR = f"ΔR {mets['R_error/init'].item():.2f} -> {mets['R_error'].item():.3f} deg; "
+    # errt = f"Δt {mets['t_error/init'].item():.2f} -> {mets['t_error'].item():.3f} m"
+    # print(errP, errR, errt)
+
+    imr, imq = data['ref']['image'][0].permute(1, 2, 0), data['query']['image'][0].permute(1, 2, 0)
+    n_points_plot = -1
+    plot_images([imr, imq],
+                dpi=100,  # set to 100-200 for higher res
+                titles=[(data['scene'].item(), valid_r.sum().item(), valid_q.sum().item()), 0.0])
+    plot_keypoints([p2D_r[valid_r][:n_points_plot], p2D_q_gt[valid][:n_points_plot]],
+                   colors=[cm_RdGn(valid[valid_r][:n_points_plot]), 'lime'])
+    plot_keypoints([np.empty((0, 2)), p2D_q_init[valid][:n_points_plot]], colors='red')
+    plot_keypoints([np.empty((0, 2)), p2D_q_opt[valid][:n_points_plot]], colors='blue')
+    add_text(0, 'reference')
+    add_text(1, 'query')
+
+    #     continue
+    for i, (F0, F1) in enumerate(zip(pred['ref']['feature_maps'], pred['query']['feature_maps'])):
+      C_r, C_q = pred['ref']['confidences'][i][0], pred['query']['confidences'][i][0]
+      plot_images([C_r, C_q], cmaps=mpl.cm.Greys, dpi=100)
+      add_text(0, f'Level {i}')
+
+      axes = plt.gcf().axes
+      axes[0].imshow(imr, alpha=0.2, extent=axes[0].images[0]._extent)
+      axes[1].imshow(imq, alpha=0.2, extent=axes[1].images[0]._extent)
+      plot_images(features_to_RGB(F0.numpy(), F1.numpy(), skip=1), dpi=100)
