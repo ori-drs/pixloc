@@ -1,7 +1,6 @@
 from pathlib import Path
 
 import cv2
-from plyfile import PlyData, PlyElement
 from tqdm import tqdm
 import numpy as np
 import logging
@@ -27,11 +26,18 @@ class Ouster(BaseDataset):
     def get_dataset(self, split):
         return _Ouster_Dataset(self.conf)
 
+def drs_q_t_to_T(q, t):
+    def list_rotate(l, n):
+        return l[n:] + l[:n]
+    q = list_rotate(list(q), 3)
+    q = np.array(q)
+    t = np.array(t)
+    rot_mat = qvec2rotmat(q)
+    return np.vstack((np.hstack((rot_mat, t[:,None])), np.array([0,0,0,1])[None,:]))
+
 
 class _Ouster_Dataset(torch.utils.data.Dataset):
     def __init__(self, conf):
-
-
         B_r_BL = [0.001, 0.000, 0.091]
         q_BL = [0.0, 0.0, 0.0, 1.0]
 
@@ -53,21 +59,21 @@ class _Ouster_Dataset(torch.utils.data.Dataset):
         self.right_camera = Camera(torch.tensor(right_calib, dtype=torch.float32))
 
     def __getitem__(self, idx):
-        item = self.data[list(self.data.keys())[idx]]
-        left_image = cv2.imread(item["left_image"])
-        right_image = cv2.imread(item["right_image"])
-        with open(item["lidar_points"], "rb") as f:
-            lidar_ply = PlyData.read(f)
-        vertices = np.stack((lidar_ply["vertex"]["x"],
-                             lidar_ply["vertex"]["y"],
-                             lidar_ply["vertex"]["z"]))
+        left_image = cv2.imread("/tmp/latest_ir.tif")
+        right_image = cv2.imread("/tmp/previous_ir.tif")
+        x_image = cv2.imread("/tmp/latest_x.tif", cv2.IMREAD_ANYDEPTH)
+        y_image = cv2.imread("/tmp/latest_y.tif", cv2.IMREAD_ANYDEPTH)
+        z_image = cv2.imread("/tmp/latest_z.tif", cv2.IMREAD_ANYDEPTH)
+        xyz_image = np.dstack((x_image, y_image, z_image))
+        xyz_points = xyz_image.reshape(-1, 3)
+        vertices = xyz_points.T
         vertices_in_right_camera = self.T_right_camera_lidar.dot(np.vstack((vertices,
                                                                       np.ones_like(vertices[0, :]))))
 
         datum = dict()
         datum['ref'] = dict()
         datum['query'] = dict()
-        datum['ref']['image'] = torch.tensor(right_image,dtype=torch.float32).permute(2,0,1) / 255.
+        datum['ref']['image'] = torch.tensor(right_image,dtype=torch.float32).permute(2,0,1)
         datum['ref']['camera'] = self.right_camera
         datum['ref']['points3D'] = torch.tensor(vertices_in_right_camera[:3,:].T, dtype=torch.float32)
         k = 512
@@ -75,7 +81,7 @@ class _Ouster_Dataset(torch.utils.data.Dataset):
         idx = perm[:k]
         datum['ref']['points3D'] = datum['ref']['points3D'][idx]
 
-        datum['query']['image'] = torch.tensor(left_image, dtype=torch.float32).permute(2,0,1) / 255.
+        datum['query']['image'] = torch.tensor(left_image, dtype=torch.float32).permute(2,0,1)
         datum['query']['camera'] = self.left_camera
 
         datum['T_r2q_init'] = Pose.from_4x4mat(torch.eye(4,dtype=torch.float32))
@@ -86,4 +92,4 @@ class _Ouster_Dataset(torch.utils.data.Dataset):
         return datum
 
     def __len__(self):
-        return self.data.__len__()
+        return 1
