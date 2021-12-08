@@ -3,6 +3,8 @@ from pathlib import Path
 import cv2
 from tqdm import tqdm
 import numpy as np
+import matplotlib as mpl
+import matplotlib.pyplot as plt
 import logging
 import torch
 import pickle
@@ -28,6 +30,9 @@ def drs_q_t_to_T(q, t):
   t = np.array(t)
   rot_mat = qvec2rotmat(q)
   return np.vstack((np.hstack((rot_mat, t[:, None])), np.array([0, 0, 0, 1])[None, :]))
+
+def tup_detachee(input_tuple):
+  return [x.detach() for x in input_tuple]
 
 class LiveTwoViewRefiner(object):
   def __init__(self):
@@ -85,10 +90,10 @@ class LiveTwoViewRefiner(object):
     cam_q = data['query']['camera']
     p3D_r = data['ref']['points3D']
 
-    p2D_r, valid_r = data['ref']['camera'].world2image(p3D_r)
-    p2D_q_gt, valid_q = cam_q.world2image(data['T_r2q_gt'] * p3D_r)
-    p2D_q_init, _ = cam_q.world2image(data['T_r2q_init'] * p3D_r)
-    p2D_q_opt, _ = cam_q.world2image(pred['T_r2q_opt'][-1] * p3D_r)
+    p2D_r, valid_r = tup_detachee(data['ref']['camera'].world2image(p3D_r))
+    p2D_q_gt, valid_q = tup_detachee(cam_q.world2image(data['T_r2q_gt'] * p3D_r))
+    p2D_q_init, _ = tup_detachee(cam_q.world2image(data['T_r2q_init'] * p3D_r))
+    p2D_q_opt, _ = tup_detachee(cam_q.world2image(pred['T_r2q_opt'][-1] * p3D_r))
     valid = valid_q & valid_r
 
     # losses = refiner.loss(pred_, data_)
@@ -98,7 +103,7 @@ class LiveTwoViewRefiner(object):
     # errt = f"Δt {mets['t_error/init'].item():.2f} -> {mets['t_error'].item():.3f} m"
     # print(errP, errR, errt)
 
-    imr, imq = data['ref']['image'][0].permute(1, 2, 0), data['query']['image'][0].permute(1, 2, 0)
+    imr, imq = data['ref']['image'][0].permute(1, 2, 0).detach(), data['query']['image'][0].permute(1, 2, 0).detach()
     n_points_plot = -1
     plot_images([imr, imq],
                 dpi=100,  # set to 100-200 for higher res
@@ -112,11 +117,14 @@ class LiveTwoViewRefiner(object):
 
     #     continue
     for i, (F0, F1) in enumerate(zip(pred['ref']['feature_maps'], pred['query']['feature_maps'])):
-      C_r, C_q = pred['ref']['confidences'][i][0], pred['query']['confidences'][i][0]
-      plot_images([C_r, C_q], cmaps=mpl.cm.Greys, dpi=100)
+      F0 = F0.detach()
+      F1 = F1.detach()
+      C_r, C_q = pred['ref']['confidences'][i][0].detach(), pred['query']['confidences'][i][0].detach()
+      plot_images([C_r[0], C_q[0]], cmaps=mpl.cm.Greys, dpi=100)
       add_text(0, f'Level {i}')
 
       axes = plt.gcf().axes
       axes[0].imshow(imr, alpha=0.2, extent=axes[0].images[0]._extent)
       axes[1].imshow(imq, alpha=0.2, extent=axes[1].images[0]._extent)
-      plot_images(features_to_RGB(F0.numpy(), F1.numpy(), skip=1), dpi=100)
+      print(F0.shape)
+      plot_images(features_to_RGB(F0.numpy()[0], F1.numpy()[0], skip=1), dpi=100)
