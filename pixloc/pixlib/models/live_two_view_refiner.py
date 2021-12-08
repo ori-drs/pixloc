@@ -27,7 +27,7 @@ def drs_q_t_to_T(q, t):
   return np.vstack((np.hstack((rot_mat, t[:, None])), np.array([0, 0, 0, 1])[None, :]))
 
 class LiveTwoViewRefiner(object):
-  def __init__(self, cam0_intrinsics, cam1_intrinsics):
+  def __init__(self):
     exp = "pixloc_author_reference"
     conf = {
       'normalize_dt': False,
@@ -49,16 +49,13 @@ class LiveTwoViewRefiner(object):
     calib1 = [720, 540, 353.65, 353.02, 362.44, 288.49]
     self.calib1 = Camera(torch.tensor(calib1, dtype=torch.float32))
     self.calib0 = Camera(torch.tensor(calib0, dtype=torch.float32))
-    pass
 
-  def process_inputs(self, cam0, cam1, lidar_points_in_lidar_frame):
-    # print(lidar_points_in_lidar_frame.shape)
-
+  def process_inputs(self, image_0, image_1, lidar_points_in_lidar_frame, camera_0, camera_1):
     data = dict()
     data['ref'] = dict()
     data['query'] = dict()
-    data['ref']['image'] = (torch.from_numpy(cam0).permute(2,0,1) / 255.).unsqueeze(0).type(torch.float32)
-    data['ref']['camera'] = self.calib0
+    data['ref']['image'] = (torch.from_numpy(image_0).permute(2, 0, 1) / 255.).unsqueeze(0).type(torch.float32)
+    data['ref']['camera'] = camera_0
     data['ref']['T_w2cam'] = Pose.from_4x4mat(torch.eye(4,4,dtype=torch.float32))
 
     vertices_in_cam0 = self.T_right_camera_lidar.dot(np.vstack((lidar_points_in_lidar_frame,
@@ -69,8 +66,8 @@ class LiveTwoViewRefiner(object):
     idx = perm[:k]
     data['ref']['points3D'] = data['ref']['points3D'][idx].unsqueeze(0)
 
-    data['query']['image'] = (torch.from_numpy(cam1).permute(2,0,1) / 255.).unsqueeze(0).type(torch.float32)
-    data['query']['camera'] = self.calib1
+    data['query']['image'] = (torch.from_numpy(image_1).permute(2, 0, 1) / 255.).unsqueeze(0).type(torch.float32)
+    data['query']['camera'] = camera_1
     data['query']['T_w2cam'] = Pose.from_4x4mat(torch.eye(4,4,dtype=torch.float32))
     data['T_r2q_init'] = Pose.from_4x4mat(torch.eye(4,4,dtype=torch.float32))
     pred = self.refiner(data)
