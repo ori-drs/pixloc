@@ -21,16 +21,6 @@ from pixloc.visualization.viz_2d import (
 logger = logging.getLogger(__name__)
 
 
-def list_rotate(l, n):
-  return l[n:] + l[:n]
-
-def drs_q_t_to_T(q, t):
-  q = list_rotate(list(q), 3)
-  q = np.array(q)
-  t = np.array(t)
-  rot_mat = qvec2rotmat(q)
-  return np.vstack((np.hstack((rot_mat, t[:, None])), np.array([0, 0, 0, 1])[None, :]))
-
 class LiveTwoViewRefiner(object):
   def __init__(self):
     exp = "pixloc_author_reference"
