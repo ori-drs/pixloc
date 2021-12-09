@@ -31,9 +31,6 @@ def drs_q_t_to_T(q, t):
   rot_mat = qvec2rotmat(q)
   return np.vstack((np.hstack((rot_mat, t[:, None])), np.array([0, 0, 0, 1])[None, :]))
 
-def tup_detachee(input_tuple):
-  return [x.detach() for x in input_tuple]
-
 class LiveTwoViewRefiner(object):
   def __init__(self):
     exp = "pixloc_author_reference"
