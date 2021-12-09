@@ -1,22 +1,11 @@
-from pathlib import Path
-
 import cv2
-from tqdm import tqdm
 import numpy as np
-import matplotlib as mpl
-import matplotlib.pyplot as plt
 import logging
 import torch
-import pickle
-import json
 
 from ..geometry import Camera, Pose
-from ...settings import DATA_PATH
-from pixloc.utils.quaternions import qvec2rotmat
 from pixloc.pixlib.utils.experiments import load_experiment
-from pixloc.visualization.viz_2d import (
-    plot_images, plot_keypoints, plot_matches, cm_RdGn,
-    features_to_RGB, add_text)
+from pixloc.visualization.viz_2d import features_to_RGB
 
 logger = logging.getLogger(__name__)
 
