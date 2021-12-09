@@ -65,47 +65,22 @@ class LiveTwoViewRefiner(object):
       self.log_refinement(data, pred, logger)
     return pred
 
-  def log_refinement(self, data, pred, refiner, logger):
+  def log_refinement(self, data, pred, logger):
     if logger is None:
       return
     cam_q = data['query']['camera']
     p3D_r = data['ref']['points3D']
 
-    p2D_r, valid_r = tup_detachee(data['ref']['camera'].world2image(p3D_r))
-    p2D_q_gt, valid_q = tup_detachee(cam_q.world2image(data['T_r2q_gt'] * p3D_r))
-    p2D_q_init, _ = tup_detachee(cam_q.world2image(data['T_r2q_init'] * p3D_r))
-    p2D_q_opt, _ = tup_detachee(cam_q.world2image(pred['T_r2q_opt'][-1] * p3D_r))
+    p2D_r, valid_r = data['ref']['camera'].world2image(p3D_r)
+    p2D_q_gt, valid_q = cam_q.world2image(data['T_r2q_gt'] * p3D_r)
+    p2D_q_init, _ = cam_q.world2image(data['T_r2q_init'] * p3D_r)
+    p2D_q_opt, _ = cam_q.world2image(pred['T_r2q_opt'][-1] * p3D_r)
     valid = valid_q & valid_r
 
-    # losses = refiner.loss(pred_, data_)
-    # mets = refiner.metrics(pred_, data_)
-    # errP = f"ΔP {losses['reprojection_error/init'].item():.2f} -> {losses['reprojection_error'].item():.3f} px; "
-    # errR = f"ΔR {mets['R_error/init'].item():.2f} -> {mets['R_error'].item():.3f} deg; "
-    # errt = f"Δt {mets['t_error/init'].item():.2f} -> {mets['t_error'].item():.3f} m"
-    # print(errP, errR, errt)
-
-    imr, imq = data['ref']['image'][0].permute(1, 2, 0).detach(), data['query']['image'][0].permute(1, 2, 0).detach()
-    n_points_plot = -1
-    plot_images([imr, imq],
-                dpi=100,  # set to 100-200 for higher res
-                titles=[(data['scene'].item(), valid_r.sum().item(), valid_q.sum().item()), 0.0])
-    plot_keypoints([p2D_r[valid_r][:n_points_plot], p2D_q_gt[valid][:n_points_plot]],
-                   colors=[cm_RdGn(valid[valid_r][:n_points_plot]), 'lime'])
-    plot_keypoints([np.empty((0, 2)), p2D_q_init[valid][:n_points_plot]], colors='red')
-    plot_keypoints([np.empty((0, 2)), p2D_q_opt[valid][:n_points_plot]], colors='blue')
-    add_text(0, 'reference')
-    add_text(1, 'query')
-
-    #     continue
+    imr, imq = data['ref']['image'][0].permute(1, 2, 0), data['query']['image'][0].permute(1, 2, 0)
+    logger["inputs"] = np.hstack((imr, imq))
     for i, (F0, F1) in enumerate(zip(pred['ref']['feature_maps'], pred['query']['feature_maps'])):
-      F0 = F0.detach()
-      F1 = F1.detach()
-      C_r, C_q = pred['ref']['confidences'][i][0].detach(), pred['query']['confidences'][i][0].detach()
-      plot_images([C_r[0], C_q[0]], cmaps=mpl.cm.Greys, dpi=100)
-      add_text(0, f'Level {i}')
-
-      axes = plt.gcf().axes
-      axes[0].imshow(imr, alpha=0.2, extent=axes[0].images[0]._extent)
-      axes[1].imshow(imq, alpha=0.2, extent=axes[1].images[0]._extent)
-      print(F0.shape)
-      plot_images(features_to_RGB(F0.numpy()[0], F1.numpy()[0], skip=1), dpi=100)
+      logger[i] = dict()
+      logger[i]["F0"] = features_to_RGB(F0.numpy()[0])[0]
+      logger[i]["F1"] = features_to_RGB(F1.numpy()[0])[0]
+      logger[i]["features"] = np.hstack((logger[i]["F0"], logger[i]["F1"]))
