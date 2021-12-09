@@ -19,6 +19,7 @@ def plot_circles(img, centres, color):
     cv2.circle(img, centre, 3, color, thickness=cv2.FILLED)
   return img
 
+
 class LiveTwoViewRefiner(object):
   def __init__(self):
     exp = "pixloc_author_reference"
@@ -29,7 +30,7 @@ class LiveTwoViewRefiner(object):
     self.refiner = load_experiment(exp, conf)
     self.refiner.eval()
 
-  def process_inputs(self, image_0, image_1, lidar_points_in_camera_0, camera_0, camera_1, logger=None):
+  def process_inputs(self, image_0, image_1, lidar_points_in_camera_0, camera_0, camera_1, T_camera_0_camera_1_gt, logger=None):
     with torch.no_grad():
       data = dict()
       data['ref'] = dict()
@@ -47,7 +48,7 @@ class LiveTwoViewRefiner(object):
       data['query']['camera'] = camera_1
       data['query']['T_w2cam'] = Pose.from_4x4mat(torch.eye(4,4,dtype=torch.float32))
       data['T_r2q_init'] = Pose.from_4x4mat(torch.eye(4,4,dtype=torch.float32))
-      data['T_r2q_gt'] = Pose.from_4x4mat(torch.eye(4,4,dtype=torch.float32))
+      data['T_r2q_gt'] = Pose.from_4x4mat(torch.from_numpy(T_camera_0_camera_1_gt).float())
       data['scene'] = torch.tensor([0])
       pred = self.refiner(data)
       self.log_refinement(data, pred, logger)
@@ -68,9 +69,10 @@ class LiveTwoViewRefiner(object):
 
     imr, imq = data['ref']['image'][0].permute(1, 2, 0), data['query']['image'][0].permute(1, 2, 0)
     imr, imq = normalise_to_uint8(imr.numpy()), normalise_to_uint8(imq.numpy())
-    imr = plot_circles(imr, p2D_r[valid].numpy().astype(np.int), (255,0,0))
+    imr = plot_circles(imr, p2D_r[valid].numpy().astype(np.int), (0,255,0))
     imq = plot_circles(imq, p2D_q_opt[valid].numpy().astype(np.int), (255,0,0))
     imq = plot_circles(imq, p2D_q_init[valid].numpy().astype(np.int), (0,0,255))
+    imq = plot_circles(imq, p2D_q_gt[valid].numpy().astype(np.int), (0,255,0))
     logger["inputs"] = np.hstack((imr, imq))
     for i, (F0, F1) in enumerate(zip(pred['ref']['feature_maps'], pred['query']['feature_maps'])):
       logger[i] = dict()
