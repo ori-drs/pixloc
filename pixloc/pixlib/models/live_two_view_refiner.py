@@ -39,41 +39,30 @@ class LiveTwoViewRefiner(object):
       'optimizer': {'num_iters': 20, },
     }
     self.refiner = load_experiment(exp, conf)
+    self.refiner.eval()
 
-    B_r_BL = [0.001, 0.000, 0.091]
-    q_BL = [0.0, 0.0, 0.0, 1.0]
+  def process_inputs(self, image_0, image_1, lidar_points_in_camera_0, camera_0, camera_1, logger=None):
+    with torch.no_grad():
+      data = dict()
+      data['ref'] = dict()
+      data['query'] = dict()
+      data['ref']['image'] = (torch.from_numpy(image_0).permute(2, 0, 1) / 255.).unsqueeze(0).type(torch.float32)
+      data['ref']['camera'] = camera_0
+      data['ref']['T_w2cam'] = Pose.from_4x4mat(torch.eye(4,4,dtype=torch.float32))
+      data['ref']['points3D'] = torch.tensor(lidar_points_in_camera_0, dtype=torch.float32)
+      k = 512
+      perm = torch.randperm(data['ref']['points3D'].shape[0])
+      idx = perm[:k]
+      data['ref']['points3D'] = data['ref']['points3D'][idx].unsqueeze(0)
 
-    T_base_lidar = drs_q_t_to_T(q_BL, B_r_BL)
-    q_BC = [-0.499, 0.501, -0.499, 0.501]  # the base here is the bottom of NUC
-    B_r_BC = [0.082, 0.053, 0.077]
-
-    T_base_right_camera = drs_q_t_to_T(q_BC, B_r_BC)
-    self.T_right_camera_lidar = np.linalg.inv(T_base_right_camera).dot(T_base_lidar)
-
-  def process_inputs(self, image_0, image_1, lidar_points_in_lidar_frame, camera_0, camera_1, logger=None):
-    data = dict()
-    data['ref'] = dict()
-    data['query'] = dict()
-    data['ref']['image'] = (torch.from_numpy(image_0).permute(2, 0, 1) / 255.).unsqueeze(0).type(torch.float32)
-    data['ref']['camera'] = camera_0
-    data['ref']['T_w2cam'] = Pose.from_4x4mat(torch.eye(4,4,dtype=torch.float32))
-
-    vertices_in_cam0 = self.T_right_camera_lidar.dot(np.vstack((lidar_points_in_lidar_frame,
-                                                                        np.ones_like(lidar_points_in_lidar_frame[0, :]))))
-    data['ref']['points3D'] = torch.tensor(vertices_in_cam0[:3, :].T, dtype=torch.float32)
-    k = 512
-    perm = torch.randperm(data['ref']['points3D'].shape[0])
-    idx = perm[:k]
-    data['ref']['points3D'] = data['ref']['points3D'][idx].unsqueeze(0)
-
-    data['query']['image'] = (torch.from_numpy(image_1).permute(2, 0, 1) / 255.).unsqueeze(0).type(torch.float32)
-    data['query']['camera'] = camera_1
-    data['query']['T_w2cam'] = Pose.from_4x4mat(torch.eye(4,4,dtype=torch.float32))
-    data['T_r2q_init'] = Pose.from_4x4mat(torch.eye(4,4,dtype=torch.float32))
-    data['T_r2q_gt'] = Pose.from_4x4mat(torch.eye(4,4,dtype=torch.float32))
-    data['scene'] = torch.tensor([0])
-    pred = self.refiner(data)
-    self.log_refinement(data, pred, self.refiner, logger)
+      data['query']['image'] = (torch.from_numpy(image_1).permute(2, 0, 1) / 255.).unsqueeze(0).type(torch.float32)
+      data['query']['camera'] = camera_1
+      data['query']['T_w2cam'] = Pose.from_4x4mat(torch.eye(4,4,dtype=torch.float32))
+      data['T_r2q_init'] = Pose.from_4x4mat(torch.eye(4,4,dtype=torch.float32))
+      data['T_r2q_gt'] = Pose.from_4x4mat(torch.eye(4,4,dtype=torch.float32))
+      data['scene'] = torch.tensor([0])
+      pred = self.refiner(data)
+      self.log_refinement(data, pred, logger)
     return pred
 
   def log_refinement(self, data, pred, refiner, logger):
