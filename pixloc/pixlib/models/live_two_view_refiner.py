@@ -53,11 +53,6 @@ class LiveTwoViewRefiner(object):
     T_base_right_camera = drs_q_t_to_T(q_BC, B_r_BC)
     self.T_right_camera_lidar = np.linalg.inv(T_base_right_camera).dot(T_base_lidar)
 
-    calib0 = [720, 540, 353.84, 353.08, 354.96, 261.97]
-    calib1 = [720, 540, 353.65, 353.02, 362.44, 288.49]
-    self.calib1 = Camera(torch.tensor(calib1, dtype=torch.float32))
-    self.calib0 = Camera(torch.tensor(calib0, dtype=torch.float32))
-
   def process_inputs(self, image_0, image_1, lidar_points_in_lidar_frame, camera_0, camera_1, logger=None):
     data = dict()
     data['ref'] = dict()
