@@ -10,6 +10,15 @@ from pixloc.visualization.viz_2d import features_to_RGB
 logger = logging.getLogger(__name__)
 
 
+def normalise_to_uint8(I):
+  return cv2.normalize(I, None, 0, 255, cv2.NORM_MINMAX, cv2.CV_8U)
+
+
+def plot_circles(img, centres, color):
+  for centre in centres:
+    cv2.circle(img, centre, 3, color, thickness=cv2.FILLED)
+  return img
+
 class LiveTwoViewRefiner(object):
   def __init__(self):
     exp = "pixloc_author_reference"
@@ -54,9 +63,14 @@ class LiveTwoViewRefiner(object):
     p2D_q_gt, valid_q = cam_q.world2image(data['T_r2q_gt'] * p3D_r)
     p2D_q_init, _ = cam_q.world2image(data['T_r2q_init'] * p3D_r)
     p2D_q_opt, _ = cam_q.world2image(pred['T_r2q_opt'][-1] * p3D_r)
+
     valid = valid_q & valid_r
 
     imr, imq = data['ref']['image'][0].permute(1, 2, 0), data['query']['image'][0].permute(1, 2, 0)
+    imr, imq = normalise_to_uint8(imr.numpy()), normalise_to_uint8(imq.numpy())
+    imr = plot_circles(imr, p2D_r[valid].numpy().astype(np.int), (255,0,0))
+    imq = plot_circles(imq, p2D_q_opt[valid].numpy().astype(np.int), (255,0,0))
+    imq = plot_circles(imq, p2D_q_init[valid].numpy().astype(np.int), (0,0,255))
     logger["inputs"] = np.hstack((imr, imq))
     for i, (F0, F1) in enumerate(zip(pred['ref']['feature_maps'], pred['query']['feature_maps'])):
       logger[i] = dict()
