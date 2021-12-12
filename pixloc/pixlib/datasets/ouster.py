@@ -9,7 +9,6 @@ import pickle
 import json
 from ..geometry import Camera, Pose
 
-
 from .base_dataset import BaseDataset
 from ..geometry import Camera, Pose
 from ...settings import DATA_PATH
@@ -26,14 +25,16 @@ class Ouster(BaseDataset):
     def get_dataset(self, split):
         return _Ouster_Dataset(self.conf)
 
+
 def drs_q_t_to_T(q, t):
     def list_rotate(l, n):
         return l[n:] + l[:n]
+
     q = list_rotate(list(q), 3)
     q = np.array(q)
     t = np.array(t)
     rot_mat = qvec2rotmat(q)
-    return np.vstack((np.hstack((rot_mat, t[:,None])), np.array([0,0,0,1])[None,:]))
+    return np.vstack((np.hstack((rot_mat, t[:, None])), np.array([0, 0, 0, 1])[None, :]))
 
 
 class _Ouster_Dataset(torch.utils.data.Dataset):
@@ -68,25 +69,25 @@ class _Ouster_Dataset(torch.utils.data.Dataset):
         xyz_points = xyz_image.reshape(-1, 3)
         vertices = xyz_points.T
         vertices_in_right_camera = self.T_right_camera_lidar.dot(np.vstack((vertices,
-                                                                      np.ones_like(vertices[0, :]))))
+                                                                            np.ones_like(vertices[0, :]))))
 
         datum = dict()
         datum['ref'] = dict()
         datum['query'] = dict()
-        datum['ref']['image'] = torch.tensor(right_image,dtype=torch.float32).permute(2,0,1)
+        datum['ref']['image'] = torch.tensor(right_image, dtype=torch.float32).permute(2, 0, 1)
         datum['ref']['camera'] = self.right_camera
-        datum['ref']['points3D'] = torch.tensor(vertices_in_right_camera[:3,:].T, dtype=torch.float32)
+        datum['ref']['points3D'] = torch.tensor(vertices_in_right_camera[:3, :].T, dtype=torch.float32)
         k = 512
         perm = torch.randperm(datum['ref']['points3D'].shape[0])
         idx = perm[:k]
         datum['ref']['points3D'] = datum['ref']['points3D'][idx]
 
-        datum['query']['image'] = torch.tensor(left_image, dtype=torch.float32).permute(2,0,1)
+        datum['query']['image'] = torch.tensor(left_image, dtype=torch.float32).permute(2, 0, 1)
         datum['query']['camera'] = self.left_camera
 
-        datum['T_r2q_init'] = Pose.from_4x4mat(torch.eye(4,dtype=torch.float32))
+        datum['T_r2q_init'] = Pose.from_4x4mat(torch.eye(4, dtype=torch.float32))
         datum['T_r2q_gt'] = Pose.from_4x4mat(torch.from_numpy(self.T_right_camera_left_camera))
-        datum['ref']['T_w2cam'] = Pose.from_4x4mat(torch.eye(4,dtype=torch.float32))
+        datum['ref']['T_w2cam'] = Pose.from_4x4mat(torch.eye(4, dtype=torch.float32))
         datum['query']['T_w2cam'] = datum['T_r2q_gt']
         datum['scene'] = torch.tensor([0])
         return datum
