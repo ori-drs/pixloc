@@ -21,7 +21,7 @@ We introduce PixLoc, a neural network that **localizes a given image via direct 
 PixLoc is built with Python >=3.6 and PyTorch. The package `pixloc` includes code for both training and evaluation. Installing the package locally also installs the minimal dependencies listed in `requirements.txt`:
 
 ``` bash
-git clone https://github.com/cvg/pixloc/
+git clone https://github.com/ori-drs/pixloc
 cd pixloc/
 pip install -e .
 ```
