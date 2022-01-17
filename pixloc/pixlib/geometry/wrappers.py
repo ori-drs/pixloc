@@ -227,7 +227,7 @@ class Camera(TensorWrapper):
     eps = 1e-4
 
     def __init__(self, data: torch.Tensor):
-        assert data.shape[-1] in {6, 8, 10}
+        assert data.shape[-1] in {6, 8, 10, 22}
         super().__init__(data)
 
     @classmethod
@@ -434,6 +434,25 @@ class OusterLidar(Camera):
     def last_altitude_angle(self):
         return self._data[..., 7:8]
 
+    @property
+    def zero_pix_offset_azimuth(self):
+        return self._data[..., 8:9]
+
+    @property
+    def lidar_origin_to_beam_origin_m(self):
+        return self._data[..., 9:10]
+
+    @property
+    def R_lidar_to_sensor(self) -> torch.Tensor:
+        '''Underlying rotation matrix with shape (..., 3, 3).'''
+        rvec = self._data[..., 10:19]
+        return rvec.reshape(rvec.shape[:-1] + (3, 3))
+
+    @property
+    def t_lidar_to_sensor(self) -> torch.Tensor:
+        '''Underlying translation vector with shape (..., 3).'''
+        return self._data[..., 19:]
+
     def is_in_image(self, p2d: torch.Tensor) -> torch.Tensor:
         '''Check if 2D points are within the image boundaries.'''
         assert p2d.shape[-1] == 2
@@ -448,7 +467,9 @@ class OusterLidar(Camera):
             scales = (scales, scales)
         s = self._data.new_tensor(scales)
         data = torch.cat([self.size*s, self.top_left*s, self.n_azimuth_beams*s[0], self.n_altitude_beams*s[1],
-                          self.first_altitude_angle, self.last_altitude_angle])
+                          self.first_altitude_angle, self.last_altitude_angle,
+                          self.zero_pix_offset_azimuth, self.lidar_origin_to_beam_origin_m,
+                          self.R_lidar_to_sensor.flatten(), self.t_lidar_to_sensor])
         return self.__class__(data)
 
     @autocast
@@ -457,9 +478,73 @@ class OusterLidar(Camera):
         left_top = self._data.new_tensor(left_top)
         size = self._data.new_tensor(size)
         data = torch.cat([size, left_top, self.n_azimuth_beams, self.n_altitude_beams,
-                          self.first_altitude_angle, self.last_altitude_angle])
+                          self.first_altitude_angle, self.last_altitude_angle,
+                          self.zero_pix_offset_azimuth, self.lidar_origin_to_beam_origin_m,
+                          self.R_lidar_to_sensor.flatten(), self.t_lidar_to_sensor])
 
         return self.__class__(data)
+
+    @autocast
+    def to_sensor_frame(self, p3d: torch.Tensor) -> torch.Tensor:
+        return (p3d - self.t_lidar_to_sensor).matmul(self.R_lidar_to_sensor)
+
+    @autocast
+    def calculate_azimuth_angle(self, p3d_sensor_frame: torch.Tensor) -> torch.Tensor:
+        return torch.atan2(p3d_sensor_frame[..., 1], p3d_sensor_frame[..., 0]).unsqueeze(-1)
+
+    @autocast
+    def to_beam_frame(self, p3d_sensor_frame: torch.Tensor) -> torch.Tensor:
+        xy_norm = torch.linalg.vector_norm(p3d_sensor_frame[..., :2], dim=-1)
+        xy_norm = torch.clip(xy_norm, min=self.eps)
+        azimuth_heading = p3d_sensor_frame[..., :2] / xy_norm.unsqueeze(-1)
+        offset_correction = torch.concat(
+            (azimuth_heading, torch.zeros_like(azimuth_heading[..., :1])), dim=-1) * self.lidar_origin_to_beam_origin_m
+        p3d_emitter_frame = p3d_sensor_frame - offset_correction
+        return p3d_emitter_frame
+
+    @autocast
+    def to_spherical_angles(self, p3d):
+        emitter_ranges = torch.linalg.vector_norm(p3d, dim=-1)
+        emitter_ranges = torch.clip(emitter_ranges, self.eps)
+        ps2 = p3d / emitter_ranges.reshape(*p3d.shape[:-1], 1)
+        theta_psi = torch.concat(
+            (torch.atan2(ps2[..., 1], ps2[..., 0]).unsqueeze(-1), torch.asin(ps2[..., 2]).unsqueeze(-1)), dim=-1)
+        return theta_psi
+
+    @autocast
+    def calculate_altitude(self, ps2) -> torch.Tensor:
+        altitudes = torch.asin(ps2[..., 2]).unsqueeze(-1)
+        return altitudes
+
+    @autocast
+    def calculate_vu(self, spherical_angles) -> torch.Tensor:
+        azimuth = spherical_angles[..., :1]
+        altitude = spherical_angles[..., 1:2]
+        u = self.n_altitude_beams * (altitude - self.first_altitude_angle) / \
+            (self.last_altitude_angle - self.first_altitude_angle)
+        azimuth_zero_aligned = torch.fmod(azimuth + 2.0 * torch.pi + self.zero_pix_offset_azimuth, 2.0 * np.pi)
+        v = (2.0 * torch.pi - azimuth_zero_aligned) / (2 * torch.pi / self.n_azimuth_beams)
+        coords = torch.concat((v, u), dim=-1)
+        coords -= self.top_left
+        return coords
+
+    def is_in_lidar_fov(self, spherical_angles):
+        altitudes = spherical_angles[..., 1]
+        return (max(self.first_altitude_angle,
+                    self.last_altitude_angle) > altitudes) & (altitudes > min(self.first_altitude_angle,
+                                                                              self.last_altitude_angle))
+
+    @autocast
+    def world2image(self, p3d: torch.Tensor):
+        '''Transform 3D points into 2D pixel coordinates.'''
+        ranges = torch.linalg.vector_norm(p3d, dim=-1)
+        has_range = ranges > self.eps
+        p3d_sensor_frame = self.to_sensor_frame(p3d)
+        p3d_beam_frame = self.to_beam_frame(p3d_sensor_frame)
+        spherical_angles = self.to_spherical_angles(p3d_beam_frame)
+        vu = self.calculate_vu(spherical_angles)
+        valid = has_range & self.is_in_lidar_fov(spherical_angles) & self.is_in_image(vu)
+        return vu, valid
 
     @autocast
     def world2imagebk(self, p3d: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:
