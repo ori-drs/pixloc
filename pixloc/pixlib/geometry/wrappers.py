@@ -546,30 +546,6 @@ class OusterLidar(Camera):
         valid = has_range & self.is_in_lidar_fov(spherical_angles) & self.is_in_image(vu)
         return vu, valid
 
-    @autocast
-    def world2imagebk(self, p3d: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:
-        '''Transform 3D points into 2D pixel coordinates.'''
-        ranges = torch.linalg.vector_norm(p3d, dim=-1)
-        has_range = ranges > self.eps
-
-        spherical_points_tensor, encoder = transform_to_emitter_frame(p3d)
-
-        spherical_ranges = torch.linalg.vector_norm(spherical_points_tensor, dim=-1)
-        unit_vectors = spherical_points_tensor / spherical_ranges.reshape(*spherical_points_tensor.shape[:-1], 1)
-        altitudes = torch.asin(unit_vectors[..., 2]).unsqueeze(-1)
-        is_in_lidar = (max(self.first_altitude_angle,
-                           self.last_altitude_angle) > altitudes) & (altitudes > min(self.first_altitude_angle,
-                                                                                     self.last_altitude_angle))
-        # TODO: Where is the centre of the pixel? mid-pixel or top-left corner?
-        u = self.n_altitude_beams * (altitudes - self.first_altitude_angle) / \
-            (self.last_altitude_angle - self.first_altitude_angle)
-
-        v = (2.0 * torch.pi - encoder) / (2 * torch.pi / self.n_azimuth_beams)
-        coords = torch.concat((v, u), dim=-1)
-        coords -= self.top_left
-        valid = has_range & is_in_lidar.squeeze(-1) & self.is_in_image(coords)
-        return coords, valid
-
     def J_world2image(self, p3d: torch.Tensor):
         p2d_dist, valid = self.project(p3d)
         J = (self.J_denormalize()
