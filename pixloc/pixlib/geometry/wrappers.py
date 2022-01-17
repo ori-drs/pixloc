@@ -462,7 +462,7 @@ class OusterLidar(Camera):
         return self.__class__(data)
 
     @autocast
-    def world2image(self, p3d: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:
+    def world2imagebk(self, p3d: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:
         '''Transform 3D points into 2D pixel coordinates.'''
         ranges = torch.linalg.vector_norm(p3d, dim=-1)
         has_range = ranges > self.eps
