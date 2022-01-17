@@ -476,8 +476,7 @@ class OusterLidar(Camera):
                            self.last_altitude_angle) > altitudes) & (altitudes > min(self.first_altitude_angle,
                                                                                      self.last_altitude_angle))
         # TODO: Where is the centre of the pixel? mid-pixel or top-left corner?
-        u = (0.0 * (self.last_altitude_angle - altitudes) +
-             self.n_altitude_beams * (altitudes - self.first_altitude_angle)) / \
+        u = self.n_altitude_beams * (altitudes - self.first_altitude_angle) / \
             (self.last_altitude_angle - self.first_altitude_angle)
 
         v = (2.0 * torch.pi - encoder) / (2 * torch.pi / self.n_azimuth_beams)
@@ -485,3 +484,10 @@ class OusterLidar(Camera):
         coords -= self.top_left
         valid = has_range & is_in_lidar.squeeze(-1) & self.is_in_image(coords)
         return coords, valid
+
+    def J_world2image(self, p3d: torch.Tensor):
+        p2d_dist, valid = self.project(p3d)
+        J = (self.J_denormalize()
+             @ self.J_undistort(p2d_dist)
+             @ self.J_project(p3d))
+        return J, valid
