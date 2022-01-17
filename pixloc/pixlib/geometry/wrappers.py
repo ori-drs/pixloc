@@ -378,7 +378,7 @@ class OusterLidarToBeamTransformer(object):
                           self.zero_pix_offset_azimuth, 2.0 * np.pi).unsqueeze(-1)
 
     def transform_to_emitter_frame(self, p3d: torch.Tensor):
-        p3d_beam_frame = (p3d - self.t).matmul(self.R.T)
+        p3d_beam_frame = (p3d - self.t).matmul(self.R)
         encoder = self.calculate_encoder_angle(p3d_beam_frame)
         offset_correction = torch.concat(
             (np.cos(encoder), np.sin(encoder), torch.zeros_like(encoder)), dim=-1) * self.lidar_origin_to_beam_origin_m
@@ -407,7 +407,7 @@ class OusterLidar(Camera):
     # eps = 1e-4
 
     def __init__(self, data: torch.Tensor):
-        assert data.shape[-1] == 8
+        assert data.shape[-1] == 22
         super().__init__(data)
 
     @property
