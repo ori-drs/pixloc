@@ -489,10 +489,6 @@ class OusterLidar(Camera):
         return (p3d - self.t_lidar_to_sensor).matmul(self.R_lidar_to_sensor)
 
     @autocast
-    def calculate_azimuth_angle(self, p3d_sensor_frame: torch.Tensor) -> torch.Tensor:
-        return torch.atan2(p3d_sensor_frame[..., 1], p3d_sensor_frame[..., 0]).unsqueeze(-1)
-
-    @autocast
     def to_beam_frame(self, p3d_sensor_frame: torch.Tensor) -> torch.Tensor:
         xy_norm = torch.linalg.vector_norm(p3d_sensor_frame[..., :2], dim=-1)
         xy_norm = torch.clip(xy_norm, min=self.eps)
