@@ -505,7 +505,7 @@ class OusterLidar(Camera):
         xy_norm = torch.sqrt(torch.clip(torch.linalg.vector_norm(p3d_sensor_frame[..., :2], dim=-1), min=self.eps))
         xy_heading = torch.nn.functional.normalize(p3d_sensor_frame[..., :2], dim=-1)
         ds_dv = (torch.diag_embed(torch.ones_like(xy_heading)) -
-                 torch.einsum('...i,...j->...ij', xy_heading, xy_heading)) / xy_norm.unsqueeze(-1)
+                 torch.einsum('...i,...j->...ij', xy_heading, xy_heading)) / xy_norm[..., None, None]
         J_t = torch.diag_embed(torch.ones_like(p3d_sensor_frame))
         J_t[..., :2, :2] = J_t[..., :2, :2] - ds_dv * self.lidar_origin_to_beam_origin_m
         return J_t
@@ -521,11 +521,16 @@ class OusterLidar(Camera):
     def J_to_spherical_angles(self, p3d):
         xyz_norm = torch.sqrt(torch.clip(torch.linalg.vector_norm(p3d, dim=-1), min=self.eps))
         xyz_heading = torch.nn.functional.normalize(p3d, dim=-1)
-        ds_dv = (torch.diag_embed(torch.ones_like(xyz_heading)) -
-                 torch.einsum('...i,...j->...ij', xyz_heading, xyz_heading)) / xyz_norm.unsqueeze(-1)
+        I = torch.diag_embed(torch.ones_like(xyz_heading))
+        cross_term = torch.einsum('...i,...j->...ij', xyz_heading, xyz_heading)
+        ds_dv = (I - cross_term) / xyz_norm[..., None, None]
         xy_heading = torch.nn.functional.normalize(xyz_heading[..., :2], dim=-1)
-        d_theta_psi_d_s = torch.concat((-xy_heading[..., 1:2], xy_heading[..., :1],
-                                        1.0 / (torch.sqrt(1.0 - torch.square(xyz_heading[..., -1:])))), dim=-1)
+        zero = torch.zeros_like(xy_heading[..., :1])
+        d_psi_d_z = 1.0 / torch.clip(torch.sqrt(1.0 - torch.square(xyz_heading[..., -1:])), min=self.eps)
+        d_theta_psi_d_s = torch.cat([-xy_heading[..., 1:2], xy_heading[..., :1], zero,
+                                     zero, zero, d_psi_d_z],
+                                    dim=-1)
+        d_theta_psi_d_s = d_theta_psi_d_s.reshape(*d_theta_psi_d_s.shape[:-1], 2, 3)
         return d_theta_psi_d_s @ ds_dv
 
     @autocast
@@ -544,7 +549,8 @@ class OusterLidar(Camera):
     def J_calculate_vu(self) -> torch.Tensor:
         du_d_altitude = self.n_altitude_beams / (self.last_altitude_angle - self.first_altitude_angle)
         dv_d_azimuth = - 1.0 / (2 * torch.pi / self.n_azimuth_beams)
-        return torch.concat((dv_d_azimuth, du_d_altitude), dim=-1)
+        zeros = torch.zeros_like(du_d_altitude)
+        return torch.cat((dv_d_azimuth, zeros, zeros, du_d_altitude), dim=-1)
 
     def is_in_lidar_fov(self, spherical_angles):
         altitudes = spherical_angles[..., 1]
@@ -565,8 +571,15 @@ class OusterLidar(Camera):
         return vu, valid
 
     def J_world2image(self, p3d: torch.Tensor):
-        p2d_dist, valid = self.project(p3d)
-        J = (self.J_denormalize()
-             @ self.J_undistort(p2d_dist)
-             @ self.J_project(p3d))
+        ranges = torch.linalg.vector_norm(p3d, dim=-1)
+        has_range = ranges > self.eps
+        p3d_sensor_frame = self.to_sensor_frame(p3d)
+        p3d_beam_frame = self.to_beam_frame(p3d_sensor_frame)
+        spherical_angles = self.to_spherical_angles(p3d_beam_frame)
+        valid = has_range & self.is_in_lidar_fov(spherical_angles)
+        d_vu_d_thetapsi = self.J_calculate_vu().reshape(2, 2)
+        d_thetapsi_d_p3d_beam = self.J_to_spherical_angles(p3d_beam_frame)
+        d_p3d_beam_d_p3d_sensor = self.J_to_beam_frame(p3d_sensor_frame)
+        d_p3d_sensor_d_p3d = self.J_to_sensor_frame(p3d)
+        J = (d_vu_d_thetapsi @ d_thetapsi_d_p3d_beam @ d_p3d_beam_d_p3d_sensor @ d_p3d_sensor_d_p3d)
         return J, valid
