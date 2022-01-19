@@ -1,1 +1,1 @@
-from .wrappers import Pose, Camera  # noqa
+from .wrappers import Pose, Camera, OusterLidar  # noqa
