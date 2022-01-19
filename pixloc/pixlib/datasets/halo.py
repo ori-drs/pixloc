@@ -99,12 +99,19 @@ class _Halo_Dataset(torch.utils.data.Dataset):
         camera_image = (camera_image.astype(np.float32) / 255. - 0.5)[:, :, None]
         # camera_image = np.tile(camera_image, (1, 1, 3))
         near_ir_image = self.bridge.imgmsg_to_cv2(self.data.lidar_nearir_image, "mono16").astype(np.float32)
+        near_ir_image = near_ir_image[:, int(self.ouster_sensor.top_left[0].item()):
+                                         int(self.ouster_sensor.top_left[0] + self.ouster_sensor.size[0])]
         near_ir_image -= np.mean(near_ir_image)
         ir_span = max(near_ir_image.max(), -near_ir_image.min())
         near_ir_image /= ir_span
         near_ir_image = near_ir_image[:, :, None]
         # near_ir_image = np.tile(near_ir_image[:, :, None], (1, 1, 3))
         points = [point[:3] for point in point_cloud2.read_points(self.data.lidar_points, skip_nans=True)]
+        points = np.array(points).reshape(int(self.ouster_sensor.n_altitude_beams),
+                                          int(self.ouster_sensor.n_azimuth_beams), 3)
+        points = points[:, int(self.ouster_sensor.top_left[0].item()):
+                           int(self.ouster_sensor.top_left[0] + self.ouster_sensor.size[0]), :]
+        points = points.reshape(-1, 3)
 
         datum = dict()
         datum['ref'] = dict()
@@ -112,6 +119,10 @@ class _Halo_Dataset(torch.utils.data.Dataset):
         datum['ref']['image'] = torch.tensor(near_ir_image, dtype=torch.float32).permute(2, 0, 1)
         datum['ref']['camera'] = self.ouster_sensor
         datum['ref']['points3D'] = torch.tensor(points, dtype=torch.float32)
+        k = 512
+        perm = torch.randperm(datum['ref']['points3D'].shape[0])
+        idx = perm[:k]
+        datum['ref']['points3D'] = datum['ref']['points3D'][idx]
 
         datum['query']['image'] = torch.tensor(camera_image, dtype=torch.float32).permute(2, 0, 1)
         datum['query']['camera'] = self.left_camera  # TODO: Are we using the left camera? Also fill in the poses below.
