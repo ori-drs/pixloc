@@ -81,7 +81,7 @@ class _Halo_Dataset(torch.utils.data.Dataset):
         B_r_BC = [0.082, 0.053, 0.077]
 
         T_base_left_camera = drs_q_t_to_T(q_BC, B_r_BC)
-        self.T_left_camera_lidar = np.linalg.inv(T_base_left_camera).dot(T_base_lidar)
+        self.T_left_camera_lidar = np.linalg.inv(T_base_left_camera).dot(T_base_lidar).astype(np.float32)
 
         left_calib = [720, 540, 353.65, 353.02, 362.44, 288.49]
         self.left_camera = Camera(torch.tensor(left_calib, dtype=torch.float32))
@@ -96,8 +96,14 @@ class _Halo_Dataset(torch.utils.data.Dataset):
         camera_image = cv2.remap(camera_image, self.left_camera_map1, self.left_camera_map2,
                                  interpolation=cv2.INTER_LINEAR,
                                  borderMode=cv2.BORDER_CONSTANT)
-        camera_image = camera_image.astype(np.float32)
+        camera_image = (camera_image.astype(np.float32) / 255. - 0.5)[:, :, None]
+        # camera_image = np.tile(camera_image, (1, 1, 3))
         near_ir_image = self.bridge.imgmsg_to_cv2(self.data.lidar_nearir_image, "mono16").astype(np.float32)
+        near_ir_image -= np.mean(near_ir_image)
+        ir_span = max(near_ir_image.max(), -near_ir_image.min())
+        near_ir_image /= ir_span
+        near_ir_image = near_ir_image[:, :, None]
+        # near_ir_image = np.tile(near_ir_image[:, :, None], (1, 1, 3))
         points = [point[:3] for point in point_cloud2.read_points(self.data.lidar_points, skip_nans=True)]
 
         datum = dict()
@@ -106,19 +112,23 @@ class _Halo_Dataset(torch.utils.data.Dataset):
         datum['ref']['image'] = torch.tensor(near_ir_image, dtype=torch.float32).permute(2, 0, 1)
         datum['ref']['camera'] = self.ouster_sensor
         datum['ref']['points3D'] = torch.tensor(points, dtype=torch.float32)
-        k = 512
-        perm = torch.randperm(datum['ref']['points3D'].shape[0])
-        idx = perm[:k]
-        datum['ref']['points3D'] = datum['ref']['points3D'][idx]
 
         datum['query']['image'] = torch.tensor(camera_image, dtype=torch.float32).permute(2, 0, 1)
         datum['query']['camera'] = self.left_camera  # TODO: Are we using the left camera? Also fill in the poses below.
 
-        datum['T_r2q_init'] = Pose.from_4x4mat(torch.eye(4, dtype=torch.float32))
         datum['T_r2q_gt'] = Pose.from_4x4mat(torch.from_numpy(self.T_left_camera_lidar))
+        pose_error = np.array([[1,0,0,0],
+                               [0,1,0,0.1],
+                               [0,0,1,0],
+                               [0,0,0,1]]).astype(np.float32)
+
+        datum['T_r2q_init'] = Pose.from_4x4mat(torch.from_numpy(self.T_left_camera_lidar.dot(pose_error)))
+
         datum['ref']['T_w2cam'] = Pose.from_4x4mat(torch.eye(4, dtype=torch.float32))
         datum['query']['T_w2cam'] = datum['T_r2q_gt']
         datum['scene'] = torch.tensor([0])
+        datum['query']["index"] = torch.tensor([0])
+        datum['ref']["index"] = torch.tensor([0])
         return datum
 
     def __len__(self):

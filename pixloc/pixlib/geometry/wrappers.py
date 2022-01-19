@@ -445,8 +445,11 @@ class OusterLidar(Camera):
     @property
     def R_lidar_to_sensor(self) -> torch.Tensor:
         '''Underlying rotation matrix with shape (..., 3, 3).'''
-        rvec = self._data[..., 10:19]
-        return rvec.reshape(rvec.shape[:-1] + (3, 3))
+        return self.rvec.reshape(self.rvec.shape[:-1] + (3, 3))
+
+    @property
+    def rvec(self):
+        return self._data[..., 10:19]
 
     @property
     def t_lidar_to_sensor(self) -> torch.Tensor:
@@ -469,7 +472,7 @@ class OusterLidar(Camera):
         data = torch.cat([self.size*s, self.top_left*s, self.n_azimuth_beams*s[0], self.n_altitude_beams*s[1],
                           self.first_altitude_angle, self.last_altitude_angle,
                           self.zero_pix_offset_azimuth, self.lidar_origin_to_beam_origin_m,
-                          self.R_lidar_to_sensor.flatten(), self.t_lidar_to_sensor])
+                          self.rvec, self.t_lidar_to_sensor], -1)
         return self.__class__(data)
 
     @autocast
@@ -480,7 +483,7 @@ class OusterLidar(Camera):
         data = torch.cat([size, left_top, self.n_azimuth_beams, self.n_altitude_beams,
                           self.first_altitude_angle, self.last_altitude_angle,
                           self.zero_pix_offset_azimuth, self.lidar_origin_to_beam_origin_m,
-                          self.R_lidar_to_sensor.flatten(), self.t_lidar_to_sensor])
+                          self.rvec, self.t_lidar_to_sensor])
 
         return self.__class__(data)
 
