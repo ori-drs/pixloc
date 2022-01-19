@@ -55,9 +55,9 @@ class _Halo_Dataset(torch.utils.data.Dataset):
         with open(CONFIG_PATH, "r") as f:
             metadata = client.SensorInfo(f.read())
 
-        W = metadata.format.columns_per_frame
+        W = 500  # metadata.format.columns_per_frame
         H = metadata.format.pixels_per_column
-        left_x = 0
+        left_x = 350
         top_y = 0
         n_azimuth_beams = metadata.format.columns_per_frame
         n_altitude_beams = metadata.format.pixels_per_column
@@ -80,21 +80,23 @@ class _Halo_Dataset(torch.utils.data.Dataset):
         q_BC = [-0.499, 0.501, -0.499, 0.501]  # the base here is the bottom of NUC
         B_r_BC = [0.082, 0.053, 0.077]
 
-        T_base_right_camera = drs_q_t_to_T(q_BC, B_r_BC)
-        self.T_right_camera_lidar = np.linalg.inv(T_base_right_camera).dot(T_base_lidar)
-        self.T_right_camera_left_camera = np.array(
-            [[0.9999004450657571, 0.008840078761063054, 0.010997861828491322, 0.11117119807885806],
-             [-0.008915175838954632, 0.9999371504175603, 0.006798150819857261, 0.0004908485221584779],
-             [-0.01093707442879055, -0.006895521902452946, 0.9999164125968888, -0.0005279697447933163],
-             [0.0, 0.0, 0.0, 1.0]]).astype(dtype=np.single)
+        T_base_left_camera = drs_q_t_to_T(q_BC, B_r_BC)
+        self.T_left_camera_lidar = np.linalg.inv(T_base_left_camera).dot(T_base_lidar)
 
-        right_calib = [720, 540, 353.84, 353.08, 354.96, 261.97]
         left_calib = [720, 540, 353.65, 353.02, 362.44, 288.49]
         self.left_camera = Camera(torch.tensor(left_calib, dtype=torch.float32))
-        self.right_camera = Camera(torch.tensor(right_calib, dtype=torch.float32))
+        left_K = np.array([[353.65, 0, 362.44], [0, 353.02, 288.49], [0, 0, 1]])
+        left_D = (-0.0391, -0.0084, 0.0069, -0.0022)
+        self.left_camera_map1, self.left_camera_map2 = cv2.fisheye.initUndistortRectifyMap(left_K, left_D, np.eye(3),
+                                                                                           left_K, left_calib[:2],
+                                                                                           cv2.CV_16SC2)
 
     def __getitem__(self, idx):
-        camera_image = self.bridge.imgmsg_to_cv2(self.data.camera_image, "mono8").astype(np.float32)
+        camera_image = self.bridge.imgmsg_to_cv2(self.data.camera_image, "mono8")
+        camera_image = cv2.remap(camera_image, self.left_camera_map1, self.left_camera_map2,
+                                 interpolation=cv2.INTER_LINEAR,
+                                 borderMode=cv2.BORDER_CONSTANT)
+        camera_image = camera_image.astype(np.float32)
         near_ir_image = self.bridge.imgmsg_to_cv2(self.data.lidar_nearir_image, "mono16").astype(np.float32)
         points = [point[:3] for point in point_cloud2.read_points(self.data.lidar_points, skip_nans=True)]
 
@@ -113,7 +115,7 @@ class _Halo_Dataset(torch.utils.data.Dataset):
         datum['query']['camera'] = self.left_camera  # TODO: Are we using the left camera? Also fill in the poses below.
 
         datum['T_r2q_init'] = Pose.from_4x4mat(torch.eye(4, dtype=torch.float32))
-        datum['T_r2q_gt'] = Pose.from_4x4mat(torch.from_numpy(self.T_right_camera_left_camera))
+        datum['T_r2q_gt'] = Pose.from_4x4mat(torch.from_numpy(self.T_left_camera_lidar))
         datum['ref']['T_w2cam'] = Pose.from_4x4mat(torch.eye(4, dtype=torch.float32))
         datum['query']['T_w2cam'] = datum['T_r2q_gt']
         datum['scene'] = torch.tensor([0])
