@@ -313,7 +313,8 @@ def training(rank, conf, output_dir, args):
                     logger.info(f'[Validation] {{{", ".join(str_results)}}}')
                     for k, v in results.items():
                         writer.add_scalar('val/'+k, v, tot_it)
-                torch.cuda.empty_cache()  # should be cleared at the first iter
+                if torch.cuda.is_available():
+                    torch.cuda.empty_cache()  # should be cleared at the first iter
 
             if stop:
                 break
