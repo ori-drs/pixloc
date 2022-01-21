@@ -170,9 +170,9 @@ class _Halo_Dataset(torch.utils.data.Dataset):
                                                                        camera_image[:, :, 0].astype(np.float64))
         p3d_q = p3d_q[valid_in_gradients]
         datum['ref']['points3D'] = datum['T_r2q_gt'].inv().transform(p3d_q)
-        k = 10
         torch.manual_seed(self.seed)
         perm = torch.randperm(datum['ref']['points3D'].shape[0])
+        k = min(50, len(perm))
         idx = perm[:k]
         logger.info('Indices used: ' + idx.numpy().__str__())
         datum['ref']['points3D'] = datum['ref']['points3D'][idx]
