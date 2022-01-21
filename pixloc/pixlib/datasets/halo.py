@@ -161,7 +161,7 @@ class _Halo_Dataset(torch.utils.data.Dataset):
 
         datum['T_r2q_gt'] = Pose.from_4x4mat(torch.from_numpy(self.T_left_camera_lidar))
         pose_error = np.array([[1,0,0,0],
-                               [0,1,0,0.0],
+                               [0,1,0,1.0],  #y-dimension error in lidar frame is easiest
                                [0,0,1,0],
                                [0,0,0,1]]).astype(np.float32)
 
