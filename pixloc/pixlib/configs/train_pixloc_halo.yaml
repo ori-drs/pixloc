@@ -18,7 +18,7 @@ model:
   normalize_features: true
   duplicate_optimizer_per_scale: true
   normalize_dt: false
-  clamp_error: 18614841
+  clamp_error: 100000
   extractor:
     name: unet
     encoder: vgg16
