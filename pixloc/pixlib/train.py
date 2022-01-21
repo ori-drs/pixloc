@@ -228,9 +228,10 @@ def training(rank, conf, output_dir, args):
             raise ValueError(conf.train.lr_schedule.type)
     lr_scheduler = torch.optim.lr_scheduler.MultiplicativeLR(optimizer, lr_fn)
     if args.restore:
-        optimizer.load_state_dict(init_cp['optimizer'])
-        if 'lr_scheduler' in init_cp:
-            lr_scheduler.load_state_dict(init_cp['lr_scheduler'])
+        logger.info("Intentionally skipping optimizer reloading")
+        # optimizer.load_state_dict(init_cp['optimizer'])
+        # if 'lr_scheduler' in init_cp:
+        #     lr_scheduler.load_state_dict(init_cp['lr_scheduler'])
 
     if rank == 0:
         logger.info('Starting training with configuration:\n%s',
