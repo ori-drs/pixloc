@@ -151,15 +151,26 @@ class _Halo_Dataset(torch.utils.data.Dataset):
         datum['ref']['image'] = torch.tensor(near_ir_image, dtype=torch.float32).permute(2, 0, 1)
         datum['ref']['camera'] = self.ouster_sensor
         datum['ref']['points3D'] = torch.tensor(points, dtype=torch.float32)
-        k = 512
-        perm = torch.randperm(datum['ref']['points3D'].shape[0])
-        idx = perm[:k]
-        datum['ref']['points3D'] = datum['ref']['points3D'][idx]
 
         datum['query']['image'] = torch.tensor(camera_image, dtype=torch.float32).permute(2, 0, 1)
         datum['query']['camera'] = self.left_camera  # TODO: Are we using the left camera? Also fill in the poses below.
 
         datum['T_r2q_gt'] = Pose.from_4x4mat(torch.from_numpy(self.T_left_camera_lidar))
+
+        p3d_q = datum['T_r2q_gt'].transform(datum['ref']['points3D'])
+        _, valid_in_camera = self.left_camera.world2image(p3d_q)
+        p3d_q = p3d_q[valid_in_camera]
+        valid_in_gradients = self.left_camera.has_gradient_information(p3d_q,
+                                                                       camera_image[:, :, 0].astype(np.float64))
+        p3d_q = p3d_q[valid_in_gradients]
+        datum['ref']['points3D'] = datum['T_r2q_gt'].inv().transform(p3d_q)
+        k = 10
+        torch.manual_seed(self.seed)
+        perm = torch.randperm(datum['ref']['points3D'].shape[0])
+        idx = perm[:k]
+        logger.info('Indices used: ' + idx.numpy().__str__())
+        datum['ref']['points3D'] = datum['ref']['points3D'][idx]
+
         pose_error = np.array([[1,0,0,0],
                                [0,1,0,1.0],  #y-dimension error in lidar frame is easiest
                                [0,0,1,0],

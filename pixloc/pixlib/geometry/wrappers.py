@@ -355,6 +355,17 @@ class Camera(TensorWrapper):
         valid = visible & mask & self.in_image(p2d)
         return p2d, valid
 
+    @autocast
+    def has_gradient_information(self, p3d: torch.Tensor, image_from_camera: np.array) -> torch.Tensor:
+        img = image_from_camera.numpy()
+        sobelx = cv2.Sobel(img, cv2.CV_64F, 1, 0, ksize=3)
+        sobely = cv2.Sobel(img, cv2.CV_64F, 0, 1, ksize=3)
+        square_of_grad_image = sobelx ** 2 + sobely ** 2
+        grad_threshold = 0.1
+        p2d, _ = self.world2image(p3d)
+        idx = p2d.type(torch.int32)
+        return square_of_grad_image[(idx[..., 1], idx[..., 0])] > grad_threshold
+
     def J_world2image(self, p3d: torch.Tensor):
         p2d_dist, valid = self.project(p3d)
         J = (self.J_denormalize()
