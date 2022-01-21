@@ -71,6 +71,7 @@ def drs_q_t_to_T(q, t):
 
 class _Halo_Dataset(torch.utils.data.Dataset):
     def __init__(self, conf, split):
+        self.seed = 0
         self.conf = conf
         self.split = split
         self.BAG_PATH = "/home/fu/Desktop/sample_ouster_frame_data/halo_data.bag"
@@ -189,4 +190,4 @@ class _Halo_Dataset(torch.utils.data.Dataset):
         return 1
 
     def no_op(self, seed):
-        pass
+        self.seed = seed
