@@ -44,6 +44,7 @@ train:
   seed: 0
   epochs: 100
   log_every_iter: 50
+  load_experiment: pixloc_author_reference
   eval_every_iter: 500
   dataset_callback_fn: no_op
   lr: 1.0e-05
