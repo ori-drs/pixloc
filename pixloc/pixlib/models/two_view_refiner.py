@@ -129,7 +129,7 @@ class TwoViewRefiner(BaseModel):
 
         def reprojection_error(T_r2q):
             p2D_q, _ = project(T_r2q)
-            err = torch.sum((p2D_q_gt - p2D_q)**2, dim=-1)
+            err = torch.sum((p2D_q_gt - p2D_q)**2, dim=-1) * p3d_cam[..., 2]
             err = scaled_barron(1., 2.)(err)[0]/4
             err = masked_mean(err, mask, -1)
             return err
@@ -138,6 +138,7 @@ class TwoViewRefiner(BaseModel):
         success = None
         losses = {'total': 0.}
         for i, T_opt in enumerate(pred['T_r2q_opt']):
+            p3d_cam = T_opt * data['ref']['points3D']
             err = reprojection_error(T_opt).clamp(max=self.conf.clamp_error)
             loss = err / num_scales
             if i > 0:
