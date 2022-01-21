@@ -196,7 +196,15 @@ def training(rank, conf, output_dir, args):
     model = get_model(conf.model.name)(conf.model).to(device)
     loss_fn, metrics_fn = model.loss, model.metrics
     if init_cp is not None:
-        model.load_state_dict(init_cp['model'])
+        # Filter out unused layers e.g. weights
+        model_dict = model.state_dict()
+        # 1. filter out unnecessary keys
+        pretrained_dict = {k: v for k, v in init_cp['model'].items() if k in model_dict}
+        # 2. overwrite entries in the existing state dict
+        model_dict.update(pretrained_dict)
+        # 3. load the new state dict
+        model.load_state_dict(pretrained_dict)
+        # model.load_state_dict(init_cp['model'])
     if args.distributed:
         model = torch.nn.SyncBatchNorm.convert_sync_batchnorm(model)
         model = torch.nn.parallel.DistributedDataParallel(
