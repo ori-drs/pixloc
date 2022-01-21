@@ -76,11 +76,16 @@ class _Halo_Dataset(torch.utils.data.Dataset):
         self.split = split
         self.BAG_PATH = "/home/fu/Desktop/sample_ouster_frame_data/halo_data.bag"
         self.bridge = CvBridge()
+        self.data = list()
         with rosbag.Bag(self.BAG_PATH) as bag:
+            i = 0
             for topic, msg, t in bag.read_messages(topics=['data']):
-                corresponding_tuple = msg
-                break
-        self.data = corresponding_tuple
+                self.data.append(msg)
+                i += 1
+                if self.split != "train":
+                    break
+                elif i >= 100:
+                    break
 
         CONFIG_PATH = "/home/fu/catkin_ws/src/lidar_undistortion/lidar_undistortion/config/os0_128_gen2_fw_114b12_sn_992015000018.json"
         with open(CONFIG_PATH, "r") as f:
@@ -123,14 +128,14 @@ class _Halo_Dataset(torch.utils.data.Dataset):
                                                                                            cv2.CV_16SC2)
 
     def __getitem__(self, idx):
-        camera_image = self.bridge.imgmsg_to_cv2(self.data.camera_image, "mono8")
+        camera_image = self.bridge.imgmsg_to_cv2(self.data[idx].camera_image, "mono8")
         camera_image = cv2.remap(camera_image, self.left_camera_map1, self.left_camera_map2,
                                  interpolation=cv2.INTER_LINEAR,
                                  borderMode=cv2.BORDER_CONSTANT)
         camera_image = (camera_image.astype(np.float32) / 255. - 0.5)[:, :, None]
         zeros = np.zeros_like(camera_image)
         camera_image = np.dstack((camera_image, zeros, zeros))
-        near_ir_image = self.bridge.imgmsg_to_cv2(self.data.lidar_nearir_image, "mono16").astype(np.float32)
+        near_ir_image = self.bridge.imgmsg_to_cv2(self.data[idx].lidar_nearir_image, "mono16").astype(np.float32)
         near_ir_image = near_ir_image[:, int(self.ouster_sensor.top_left[0].item()):
                                          int(self.ouster_sensor.top_left[0] + self.ouster_sensor.size[0])]
         near_ir_image -= np.mean(near_ir_image)
@@ -139,7 +144,7 @@ class _Halo_Dataset(torch.utils.data.Dataset):
         near_ir_image = near_ir_image[:, :, None]
         zeros = np.zeros_like(near_ir_image)
         near_ir_image = np.dstack((zeros, near_ir_image, zeros))
-        points = [point[:3] for point in point_cloud2.read_points(self.data.lidar_points, skip_nans=True)]
+        points = [point[:3] for point in point_cloud2.read_points(self.data[idx].lidar_points, skip_nans=True)]
         points = np.array(points).reshape(int(self.ouster_sensor.n_altitude_beams),
                                           int(self.ouster_sensor.n_azimuth_beams), 3)
         points = points[:, int(self.ouster_sensor.top_left[0].item()):
@@ -187,7 +192,7 @@ class _Halo_Dataset(torch.utils.data.Dataset):
         return datum
 
     def __len__(self):
-        return 1
+        return len(self.data)
 
     def no_op(self, seed):
         self.seed = seed
