@@ -23,7 +23,7 @@ model:
     name: unet
     encoder: vgg16
     decoder: [64, 64, 64, 32]
-    output_scales: [0, 2, 4]
+    output_scales: [0]
     output_dim: [32, 128, 128]
     freeze_batch_normalization: false
     do_average_pooling: false
