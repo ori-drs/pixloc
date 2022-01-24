@@ -504,7 +504,7 @@ class OusterLidar(Camera):
 
     @autocast
     def J_to_sensor_frame(self, p3d: torch.Tensor) -> torch.Tensor:
-        return self.R_lidar_to_sensor.T
+        return torch.transpose(self.R_lidar_to_sensor, -2, -1)
 
     @autocast
     def to_beam_frame(self, p3d_sensor_frame: torch.Tensor) -> torch.Tensor:
