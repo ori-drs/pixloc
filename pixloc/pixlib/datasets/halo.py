@@ -107,7 +107,8 @@ class _Halo_Dataset(torch.utils.data.Dataset):
         ouster_config = torch.tensor([W, H, left_x, top_y,
                              n_azimuth_beams, n_altitude_beams, first_altitude_angle, last_altitude_angle,
                              zero_pix_offset_azimuth, lidar_origin_to_beam_origin_m, *R, *t])
-        self.ouster_sensor = OusterLidar(ouster_config.float())
+        self.lidar_scale = 4.0
+        self.ouster_sensor = OusterLidar(ouster_config.float()).scale(self.lidar_scale)
 
         B_r_BL = [0.001, 0.000, 0.091]
         q_BL = [0.0, 0.0, 0.0, 1.0]
@@ -136,6 +137,7 @@ class _Halo_Dataset(torch.utils.data.Dataset):
         zeros = np.zeros_like(camera_image)
         camera_image = np.dstack((camera_image, zeros, zeros))
         near_ir_image = self.bridge.imgmsg_to_cv2(self.data[idx].lidar_nearir_image, "mono16").astype(np.float32)
+        near_ir_image = cv2.resize(near_ir_image, None, None, self.lidar_scale, self.lidar_scale)
         near_ir_image = near_ir_image[:, int(self.ouster_sensor.top_left[0].item()):
                                          int(self.ouster_sensor.top_left[0] + self.ouster_sensor.size[0])]
         near_ir_image -= np.mean(near_ir_image)
@@ -145,11 +147,7 @@ class _Halo_Dataset(torch.utils.data.Dataset):
         zeros = np.zeros_like(near_ir_image)
         near_ir_image = np.dstack((zeros, near_ir_image, zeros))
         points = [point[:3] for point in point_cloud2.read_points(self.data[idx].lidar_points, skip_nans=True)]
-        points = np.array(points).reshape(int(self.ouster_sensor.n_altitude_beams),
-                                          int(self.ouster_sensor.n_azimuth_beams), 3)
-        points = points[:, int(self.ouster_sensor.top_left[0].item()):
-                           int(self.ouster_sensor.top_left[0] + self.ouster_sensor.size[0]), :]
-        points = points.reshape(-1, 3)
+        points = np.array(points).reshape(-1, 3)
 
         datum = dict()
         datum['ref'] = dict()
