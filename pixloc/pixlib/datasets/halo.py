@@ -184,6 +184,14 @@ class _Halo_Dataset(torch.utils.data.Dataset):
 
         datum['ref']['T_w2cam'] = Pose.from_4x4mat(torch.eye(4, dtype=torch.float32))
         datum['query']['T_w2cam'] = datum['T_r2q_gt']
+        #TODO: Implement symmetric loss so that the lidar image is seen by the network optimiser.
+        if True:  # Switch query vs. reference
+            datum["ref"], datum["query"] = datum["query"], datum["ref"]
+            del datum["query"]["points3D"]
+            datum["ref"]["points3D"] = p3d_q
+            datum['T_r2q_gt'] = datum['T_r2q_gt'].inv()
+            datum['T_r2q_init'] = datum['T_r2q_init'].inv()
+
         datum['scene'] = torch.tensor([0])
         datum['query']["index"] = torch.tensor([0])
         datum['ref']["index"] = torch.tensor([0])
